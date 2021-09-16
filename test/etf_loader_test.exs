@@ -41,7 +41,7 @@ defmodule EtfLoaderTest do
     end)
   end
 
-  def assert_term_same(input) do
+  def assert_from_term_same(input) do
     output =
       input
       |> EtfLoader.to_binary!()
@@ -50,88 +50,182 @@ defmodule EtfLoaderTest do
     assert output == input
   end
 
-  test "float" do
-    data = EtfLoader.to_binary!(1.123)
-    assert <<131, 70, 63, 241, 247, 206, 217, 22, 135, 43>> == data
+  def assert_to_term_same(input) do
+    output =
+      input
+      |> :erlang.term_to_binary()
+      |> EtfLoader.from_binary!()
 
-    assert :erlang.binary_to_term(data) == 1.123
+    assert output == input
   end
 
-  test "map" do
-    assert_term_same %{"test" => 1}
+  describe "to_binary" do
+    test "float" do
+      data = EtfLoader.to_binary!(1.123)
+      assert <<131, 70, 63, 241, 247, 206, 217, 22, 135, 43>> == data
+
+      assert :erlang.binary_to_term(data) == 1.123
+    end
+
+    test "map" do
+      assert_from_term_same %{"test" => 1}
+    end
+
+    test "atom map" do
+      assert_from_term_same %{test: 1}
+    end
+
+    test "tuple" do
+      assert_from_term_same {1, 2, 3}
+    end
+
+    test "string" do
+      assert_from_term_same "testing some text"
+    end
+
+    test "binary" do
+      assert_from_term_same <<1, 2, 3>>
+    end
+
+    test "charlist" do
+      assert_from_term_same 'testing some text'
+    end
+
+    test "list" do
+      assert_from_term_same [:value, 1, true, "testing"]
+    end
+
+    test "keylist" do
+      assert_from_term_same test: :value, more: "tests"
+    end
+
+    test "large_number" do
+      assert_from_term_same 100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000
+    end
+
+    test "nil" do
+      assert_from_term_same nil
+    end
+
+    test "empty tuple" do
+      assert_from_term_same {}
+    end
+
+    test "[<<203>>]" do
+      assert_from_term_same [<<203>>]
+    end
+
+    test "improper list" do
+      assert_from_term_same [1 | 1]
+    end
+
+    test "bitstring errors" do
+      assert {:error,
+              %EtfLoader.Error{
+                message: "cannot format term of type: 'Unknown'",
+                type: "Unknown"
+              }} = EtfLoader.to_binary(<<0::size(1)>>)
+    end
+
+    test "reference errors" do
+      assert {:error, %EtfLoader.Error{message: "cannot format term of type: 'Ref'", type: "Ref"}} =
+               EtfLoader.to_binary(make_ref())
+    end
+
+    test "function errors" do
+      func = fn x -> x * 2 end
+
+      assert {:error, %EtfLoader.Error{message: "cannot format term of type: 'Fun'", type: "Fun"}} =
+               EtfLoader.to_binary(func)
+    end
+
+    property "works for all terms" do
+      check all data <- my_term() do
+        assert_from_term_same data
+      end
+    end
   end
 
-  test "atom map" do
-    assert_term_same %{test: 1}
-  end
+  describe "from_binary" do
+    test "string" do
+      assert_to_term_same "testing some text"
+    end
 
-  test "tuple" do
-    assert_term_same {1, 2, 3}
-  end
+    test "nil" do
+      assert_to_term_same nil
+    end
 
-  test "string" do
-    assert_term_same "testing some text"
-  end
+    test "float" do
+      assert_to_term_same 1.23
+    end
 
-  test "binary" do
-    assert_term_same <<1, 2, 3>>
-  end
+    test "integer" do
+      assert_to_term_same 150
+    end
 
-  test "charlist" do
-    assert_term_same 'testing some text'
-  end
+    test "atom" do
+      assert_to_term_same :hello
+    end
 
-  test "list" do
-    assert_term_same [:value, 1, true, "testing"]
-  end
+    test "not existing atom" do
+      # :hello_hello_hello_hello atom
+      data =
+        <<131, 100, 0, 23, 104, 101, 108, 108, 111, 95, 104, 101, 108, 108, 111, 95, 104, 101,
+          108, 108, 111, 95, 104, 101, 108, 108, 111>>
 
-  test "keylist" do
-    assert_term_same test: :value, more: "tests"
-  end
+      assert "hello_hello_hello_hello" == EtfLoader.from_binary!(data)
+    end
 
-  test "large_number" do
-    assert_term_same 100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000
-  end
+    test "not existing atom, unsafe" do
+      # :hi_hi_hi_hi_hi_hi_hi atom
+      # we cannot match on the atom because then the atom is already defined and would not be unsafe
+      data =
+        <<131, 100, 0, 20, 104, 105, 95, 104, 105, 95, 104, 105, 95, 104, 105, 95, 104, 105, 95,
+          104, 105, 95, 104, 105>>
 
-  test "nil" do
-    assert_term_same nil
-  end
+      assert result = EtfLoader.from_binary!(data, unsafe_atom: true)
+      assert is_atom(result)
+    end
 
-  test "empty tuple" do
-    assert_term_same {}
-  end
+    test "list" do
+      assert_to_term_same [:value, 1, true, "testing"]
+    end
 
-  test "[<<203>>]" do
-    assert_term_same [<<203>>]
-  end
+    test "empty list" do
+      assert_to_term_same []
+    end
 
-  test "improper list" do
-    assert_term_same [1 | 1]
-  end
+    test "tuple" do
+      assert_to_term_same {:value, 1, true, "testing"}
+    end
 
-  test "bitstring errors" do
-    assert {:error,
-            %EtfLoader.Error{
-              message: "cannot format term of type: 'Unknown'",
-              type: "Unknown"
-            }} = EtfLoader.to_binary(<<0::size(1)>>)
-  end
+    test "map" do
+      assert_to_term_same %{key: "test"}
+    end
 
-  test "reference errors" do
-    assert {:error, %EtfLoader.Error{message: "cannot format term of type: 'Ref'", type: "Ref"}} =
-             EtfLoader.to_binary(make_ref())
-  end
+    test "improper" do
+      assert_to_term_same [0 | 0]
+    end
 
-  test "function errors" do
-    func = fn x -> x * 2 end
+    test "improper leading list" do
+      assert_to_term_same [[0] | 0]
+    end
 
-    assert {:error, %EtfLoader.Error{message: "cannot format term of type: 'Fun'", type: "Fun"}} =
-             EtfLoader.to_binary(func)
-  end
+    test "improper starting list" do
+      assert_to_term_same [0, 1, 2, 3 | 0]
+    end
 
-  property "works for all terms" do
-    check all data <- my_term() do
-      assert_term_same data
+    test "func" do
+      assert {:error, _} =
+               make_ref()
+               |> :erlang.term_to_binary()
+               |> EtfLoader.from_binary!()
+    end
+
+    property "works for all terms" do
+      check all data <- my_term() do
+        assert_to_term_same data
+      end
     end
   end
 end
