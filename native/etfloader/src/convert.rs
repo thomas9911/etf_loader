@@ -186,7 +186,7 @@ pub fn raw_term_to_term<'a>(
             Term::map_from_arrays(env, &keys?, &values?).ok()
         }
         SmallBigInt(x) | LargeBigInt(x) => {
-            Some((atoms::big_int(), x.to_str_radix(10).as_bytes()).encode(env))
+            Some((atoms::__etf_loader_big_int(), x.to_str_radix(10).as_bytes()).encode(env))
         }
         // Pid {
         //     node: Box<RawTerm>,
