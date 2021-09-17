@@ -151,6 +151,10 @@ defmodule EtfLoaderTest do
       assert_to_term_same "testing some text"
     end
 
+    test "bytes" do
+      assert_to_term_same <<0, 1, 2, 3>>
+    end
+
     test "nil" do
       assert_to_term_same nil
     end
@@ -215,11 +219,15 @@ defmodule EtfLoaderTest do
       assert_to_term_same [0, 1, 2, 3 | 0]
     end
 
-    test "func" do
+    test "large_number" do
+      assert_to_term_same 100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000
+    end
+
+    test "ref" do
       assert {:error, _} =
                make_ref()
                |> :erlang.term_to_binary()
-               |> EtfLoader.from_binary!()
+               |> EtfLoader.from_binary()
     end
 
     property "works for all terms" do
